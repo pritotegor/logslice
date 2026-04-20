@@ -2,89 +2,86 @@ package cmd
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"strings"
 	"time"
 )
 
-func runFilter(filePath, fromStr, toStr, fieldFilter string) error {
-	var from, to time.Time
-	var err error
+// FilterOptions holds all parameters for a filter run.
+type FilterOptions struct {
+	TimeField  string
+	From       *time.Time
+	To         *time.Time
+	FieldMatch map[string]string // key=value pairs that must match
+}
 
-	if fromStr != "" {
-		if from, err = time.Parse(time.RFC3339, fromStr); err != nil {
-			return fmt.Errorf("invalid --from time: %w", err)
-		}
-	}
-	if toStr != "" {
-		if to, err = time.Parse(time.RFC3339, toStr); err != nil {
-			return fmt.Errorf("invalid --to time: %w", err)
-		}
-	}
-
-	var filterKey, filterVal string
-	if fieldFilter != "" {
-		parts := strings.SplitN(fieldFilter, "=", 2)
-		if len(parts) != 2 {
-			return fmt.Errorf("--field must be in key=value format")
-		}
-		filterKey, filterVal = parts[0], parts[1]
-	}
-
-	f, err := os.Open(filePath)
-	if err != nil {
-		return fmt.Errorf("cannot open file: %w", err)
-	}
-	defer f.Close()
-
-	scanner := bufio.NewScanner(f)
+// RunFilter reads lines from r, applies opts, and writes matching lines to w.
+func RunFilter(r io.Reader, w io.Writer, opts FilterOptions, writer *Writer) error {
+	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
+		raw := scanner.Text()
+		pl, err := ParseLine(raw, opts.TimeField)
+		if err != nil {
+			// skip unparseable lines silently
 			continue
 		}
-		var entry map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+		if !matchesTime(pl, opts) {
 			continue
 		}
-		if !matchesTime(entry, from, to) {
+		if !matchesAllFields(pl, opts.FieldMatch) {
 			continue
 		}
-		if filterKey != "" && !matchesField(entry, filterKey, filterVal) {
-			continue
+		if err := writer.WriteLine(raw, pl.Fields); err != nil {
+			return fmt.Errorf("write error: %w", err)
 		}
-		fmt.Println(line)
 	}
 	return scanner.Err()
 }
 
-func matchesTime(entry map[string]interface{}, from, to time.Time) bool {
-	for _, key := range []string{"time", "timestamp", "ts", "@timestamp"} {
-		val, ok := entry[key]
-		if !ok {
-			continue
-		}
-		ts, err := time.Parse(time.RFC3339, fmt.Sprintf("%v", val))
-		if err != nil {
-			continue
-		}
-		if !from.IsZero() && ts.Before(from) {
-			return false
-		}
-		if !to.IsZero() && ts.After(to) {
-			return false
-		}
+// matchesTime returns true when the line's timestamp falls within [From, To].
+// Lines without a timestamp pass through unless a range is specified.
+func matchesTime(pl *ParsedLine, opts FilterOptions) bool {
+	if opts.From == nil && opts.To == nil {
 		return true
+	}
+	if pl.Timestamp == nil {
+		return false
+	}
+	if opts.From != nil && pl.Timestamp.Before(*opts.From) {
+		return false
+	}
+	if opts.To != nil && pl.Timestamp.After(*opts.To) {
+		return false
 	}
 	return true
 }
 
-func matchesField(entry map[string]interface{}, key, val string) bool {
-	v, ok := entry[key]
+// matchesField checks whether a single field in the parsed line matches the
+// expected value (case-insensitive substring match).
+func matchesField(fields map[string]interface{}, key, value string) bool {
+	v, ok := fields[key]
 	if !ok {
 		return false
 	}
-	return fmt.Sprintf("%v", v) == val
+	return strings.Contains(
+		strings.ToLower(fmt.Sprintf("%v", v)),
+		strings.ToLower(value),
+	)
+}
+
+// matchesAllFields returns true when every entry in want matches the line.
+func matchesAllFields(pl *ParsedLine, want map[string]string) bool {
+	if len(want) == 0 {
+		return true
+	}
+	if !pl.IsJSON || pl.Fields == nil {
+		return false
+	}
+	for k, v := range want {
+		if !matchesField(pl.Fields, k, v) {
+			return false
+		}
+	}
+	return true
 }
