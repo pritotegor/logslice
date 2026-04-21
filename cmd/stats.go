@@ -45,6 +45,32 @@ func (s *LogStats) Record(fields map[string]interface{}) {
 	}
 }
 
+// TopValues returns the top n most frequent values for a field, sorted by count descending.
+func (fs *FieldStats) TopValues(n int) []string {
+	type kv struct {
+		val   string
+		count int
+	}
+	pairs := make([]kv, 0, len(fs.Values))
+	for val, count := range fs.Values {
+		pairs = append(pairs, kv{val, count})
+	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i].count != pairs[j].count {
+			return pairs[i].count > pairs[j].count
+		}
+		return pairs[i].val < pairs[j].val
+	})
+	if n > len(pairs) {
+		n = len(pairs)
+	}
+	result := make([]string, n)
+	for i := 0; i < n; i++ {
+		result[i] = fmt.Sprintf("%s(%d)", pairs[i].val, pairs[i].count)
+	}
+	return result
+}
+
 // Print writes a human-readable summary to stdout.
 func (s *LogStats) Print() {
 	fmt.Printf("Total lines : %d\n", s.TotalLines)
