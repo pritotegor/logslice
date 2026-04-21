@@ -52,6 +52,22 @@ func TestReadLastN_EmptyInput(t *testing.T) {
 	}
 }
 
+// TestReadLastN_NoTrailingNewline verifies that input without a trailing newline
+// is handled correctly and the last line is still captured.
+func TestReadLastN_NoTrailingNewline(t *testing.T) {
+	input := "line1\nline2\nline3"
+	lines, err := readLastN(strings.NewReader(input), 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(lines) != 2 {
+		t.Errorf("expected 2 lines, got %d", len(lines))
+	}
+	if lines[0] != "line2" || lines[1] != "line3" {
+		t.Errorf("unexpected lines: %v", lines)
+	}
+}
+
 func TestRunTail_BasicOutput(t *testing.T) {
 	// Simulate RunTail by reading last 2 lines and writing to buffer.
 	input := "first\nsecond\nthird\n"
