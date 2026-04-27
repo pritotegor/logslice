@@ -59,6 +59,8 @@ func RunAnnotate(r io.Reader, w io.Writer, fields []string, overwrite bool) erro
 	return scanner.Err()
 }
 
+// parseAnnotatePairs parses a slice of "key=value" strings into a map.
+// Returns an error if any entry does not contain a '=' or has an empty key.
 func parseAnnotatePairs(fields []string) (map[string]string, error) {
 	pairs := make(map[string]string, len(fields))
 	for _, f := range fields {
@@ -66,7 +68,11 @@ func parseAnnotatePairs(fields []string) (map[string]string, error) {
 		if idx < 1 {
 			return nil, fmt.Errorf("invalid field annotation %q: expected key=value", f)
 		}
-		pairs[f[:idx]] = f[idx+1:]
+		key := f[:idx]
+		if strings.TrimSpace(key) == "" {
+			return nil, fmt.Errorf("invalid field annotation %q: key must not be blank", f)
+		}
+		pairs[key] = f[idx+1:]
 	}
 	return pairs, nil
 }
