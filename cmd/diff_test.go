@@ -37,6 +37,19 @@ func TestDiffLines_MissingFieldInSecond(t *testing.T) {
 	}
 }
 
+func TestDiffLines_MissingFieldInFirst(t *testing.T) {
+	// Symmetric case: field present in l2 but absent in l1.
+	l1 := `{"level":"info"}`
+	l2 := `{"level":"info","trace":"abc"}`
+	diffs := diffLines(l1, l2, nil)
+	if len(diffs) != 1 {
+		t.Fatalf("expected 1 diff, got %d", len(diffs))
+	}
+	if !strings.Contains(diffs[0], "<missing>") {
+		t.Errorf("expected <missing> marker, got %q", diffs[0])
+	}
+}
+
 func TestDiffLines_FilteredFields(t *testing.T) {
 	l1 := `{"level":"info","msg":"a","code":200}`
 	l2 := `{"level":"error","msg":"b","code":200}`
