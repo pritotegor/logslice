@@ -49,18 +49,20 @@ func RunConvert(cmd *cobra.Command, args []string) error {
 	writer := NewWriter(os.Stdout, toFmt, fields)
 	scanner := bufio.NewScanner(reader)
 
+	var lineNum int
 	for scanner.Scan() {
+		lineNum++
 		line := scanner.Text()
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 		fields_map, err := convertParseLine(line, fromFmt)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "warning: skipping line: %v\n", err)
+			fmt.Fprintf(os.Stderr, "warning: skipping line %d: %v\n", lineNum, err)
 			continue
 		}
 		if err := writer.WriteLine(line, fields_map); err != nil {
-			return err
+			return fmt.Errorf("line %d: %w", lineNum, err)
 		}
 	}
 	return scanner.Err()
